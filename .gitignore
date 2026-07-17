@@ -1,0 +1,4 @@
+node_modules/
+
+# Файл создаётся тестом tui-render.test.mjs при транспиляции расширения.
+tests/.tmp-extension-under-test.mjs
