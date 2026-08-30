@@ -235,6 +235,48 @@ test("HistoryPicker toggles into session starts mode on tab", () => {
   assert.doesNotMatch(lines, /git status/);
 });
 
+test("HistoryPicker loads session starts only after the first tab", async () => {
+  "Проверка ленивой загрузки стартовых промптов без задержки открытия истории.";
+  let resolveSessionStarts;
+  let loadCalls = 0;
+  const pendingSessionStarts = new Promise((resolve) => { resolveSessionStarts = resolve; });
+  const picker = new HistoryPicker(
+    fakeTheme,
+    buildHistoryItems(["npm test"]),
+    [],
+    "",
+    () => {},
+    () => {},
+    fakeKeybindings,
+    undefined,
+    async () => {
+      loadCalls += 1;
+      return pendingSessionStarts;
+    },
+  );
+
+  assert.equal(loadCalls, 0);
+  assert.match(picker.render(60).join("\n"), /Command history/);
+
+  picker.handleInput("\t");
+
+  assert.equal(loadCalls, 1);
+  assert.match(picker.render(60).join("\n"), /Loading session starts/);
+
+  resolveSessionStarts([
+    { text: "initial project prompt", displayText: "initial project prompt · 2026-05-20", searchText: "initial project prompt" },
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const loaded = picker.render(60).join("\n");
+  assert.match(loaded, /Session starts/);
+  assert.match(loaded, /initial project prompt/);
+
+  picker.handleInput("\t");
+  picker.handleInput("\t");
+  assert.equal(loadCalls, 1);
+});
+
 test("HistoryPicker filters only session starts after mode toggle", () => {
   "Проверка нечёткого поиска только по стартовым промптам после переключения режима.";
   const picker = new HistoryPicker(
@@ -278,24 +320,18 @@ test("applyEditorText uses paste path for multiline value", () => {
   ]);
 });
 
-test("loadSessionStartItems keeps original multiline prompt for insertion", async () => {
-  "Проверка сохранения исходных переносов строк у стартового промпта сессии.";
+test("loadSessionStartItems reuses list metadata without reopening sessions", async () => {
+  "Проверка сохранения переносов строк без повторного чтения файлов сессий.";
   const { loadSessionStartItems } = loadExtensionExports();
   sessionManagerStub.list = async () => [{
     path: "/tmp/session-1.jsonl",
     name: "demo",
     modified: new Date("2026-05-20T12:00:00Z"),
-    firstMessage: "line one line two",
+    firstMessage: "line one\nline two",
   }];
-  sessionManagerStub.open = () => ({
-    getEntries: () => [{
-      type: "message",
-      message: {
-        role: "user",
-        content: [{ type: "text", text: "line one\nline two" }],
-      },
-    }],
-  });
+  sessionManagerStub.open = () => {
+    throw new Error("SessionManager.open must not be called");
+  };
 
   const items = await loadSessionStartItems("/tmp/project");
 

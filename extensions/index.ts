@@ -169,73 +169,27 @@ export function buildHistoryItems(history: string[]): PickerItem[] {
   }));
 }
 
-function extractUserMessageText(content: unknown): string | null {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return null;
-  }
-
-  const textParts = content
-    .filter((part): part is { type: string; text?: string } => !!part && typeof part === "object" && "type" in part)
-    .filter((part) => part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text ?? "");
-
-  if (textParts.length === 0) {
-    return null;
-  }
-
-  return textParts.join("\n");
-}
-
-async function loadOriginalSessionPrompt(sessionPath: string): Promise<string | null> {
-  try {
-    const session = SessionManager.open(sessionPath);
-    const entries = session.getEntries();
-
-    for (const entry of entries) {
-      if (entry.type !== "message") {
-        continue;
-      }
-
-      const message = entry.message;
-      if (!message || message.role !== "user") {
-        continue;
-      }
-
-      return extractUserMessageText(message.content);
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function loadSessionStartItems(cwd: string): Promise<PickerItem[]> {
   try {
     const sessions = await SessionManager.list(cwd);
-    const resolvedSessions = await Promise.all(sessions.map(async (session) => {
-      const originalPrompt = await loadOriginalSessionPrompt(session.path) ?? session.firstMessage ?? "";
-      const displayPrompt = normalizeCommandDisplayText(originalPrompt);
-      if (!displayPrompt) {
-        return null;
-      }
+    return sessions
+      .map((session) => {
+        const originalPrompt = session.firstMessage ?? "";
+        const displayPrompt = normalizeCommandDisplayText(originalPrompt);
+        if (!displayPrompt) {
+          return null;
+        }
 
-      const sessionLabel = session.name?.trim() || session.modified.toISOString().slice(0, 10);
-      return {
-        modifiedAt: session.modified.getTime(),
-        item: {
-          text: originalPrompt,
-          displayText: `${displayPrompt} · ${sessionLabel}`,
-          searchText: originalPrompt,
-        },
-      };
-    }));
-
-    return resolvedSessions
+        const sessionLabel = session.name?.trim() || session.modified.toISOString().slice(0, 10);
+        return {
+          modifiedAt: session.modified.getTime(),
+          item: {
+            text: originalPrompt,
+            displayText: `${displayPrompt} · ${sessionLabel}`,
+            searchText: originalPrompt,
+          },
+        };
+      })
       .filter((entry): entry is { modifiedAt: number; item: PickerItem } => entry !== null)
       .sort((left, right) => left.modifiedAt - right.modifiedAt)
       .map(({ item }) => item);
@@ -306,6 +260,8 @@ export class HistoryPicker implements Component, Focusable {
   private horizontalOffset = 0;
   private currentMatches: MatchResult[] = [];
   private mode: PickerMode = "history";
+  private sessionStartItems: PickerItem[];
+  private sessionStartsState: "idle" | "loading" | "loaded";
   private _focused = false;
 
   get focused(): boolean {
@@ -319,13 +275,16 @@ export class HistoryPicker implements Component, Focusable {
   constructor(
     private readonly theme: Theme,
     private readonly historyItems: PickerItem[],
-    private readonly sessionStartItems: PickerItem[],
+    sessionStartItems: PickerItem[],
     initialQuery: string,
     private readonly done: (value: string | null) => void,
     private readonly requestRender: () => void = () => {},
     private readonly keybindings: KeybindingsManager,
     private readonly tui?: TUI,
+    private readonly loadSessionStarts?: () => Promise<PickerItem[]>,
   ) {
+    this.sessionStartItems = sessionStartItems;
+    this.sessionStartsState = sessionStartItems.length > 0 || !loadSessionStarts ? "loaded" : "idle";
     this.query = initialQuery.trim();
     this.refreshMatches();
   }
@@ -452,13 +411,32 @@ export class HistoryPicker implements Component, Focusable {
   }
 
   private toggleMode(): void {
-    if (this.sessionStartItems.length === 0) {
+    if (this.mode === "history" && this.sessionStartItems.length === 0 && !this.loadSessionStarts) {
       return;
     }
 
     this.mode = this.mode === "history" ? "sessionStarts" : "history";
     this.refreshMatches();
     this.requestRender();
+    if (this.mode === "sessionStarts") {
+      void this.ensureSessionStartsLoaded();
+    }
+  }
+
+  private async ensureSessionStartsLoaded(): Promise<void> {
+    if (this.sessionStartsState !== "idle" || !this.loadSessionStarts) return;
+
+    this.sessionStartsState = "loading";
+    this.requestRender();
+    try {
+      this.sessionStartItems = await this.loadSessionStarts();
+    } catch {
+      this.sessionStartItems = [];
+    } finally {
+      this.sessionStartsState = "loaded";
+      if (this.mode === "sessionStarts") this.refreshMatches();
+      this.requestRender();
+    }
   }
 
   private getMaxVisibleResults(): number {
@@ -486,8 +464,12 @@ export class HistoryPicker implements Component, Focusable {
   }
 
   private getVisibleRows(maxRows: number, width: number): string[] {
+    if (this.mode === "sessionStarts" && this.sessionStartsState === "loading") {
+      return [this.theme.fg("dim", "Loading session starts…")];
+    }
     if (this.currentMatches.length === 0) {
-      return [this.theme.fg("dim", "No matching commands")];
+      const emptyText = this.mode === "sessionStarts" ? "No session starts" : "No matching commands";
+      return [this.theme.fg("dim", emptyText)];
     }
 
     const startIndex = Math.max(0, Math.min(this.selectedIndex - Math.floor(maxRows / 2), this.currentMatches.length - maxRows));
@@ -595,6 +577,7 @@ export class ManualOverlayHistoryPicker implements Component, Focusable {
     sessionStartItems: PickerItem[],
     initialQuery: string,
     done: (value: string | null) => void,
+    loadSessionStarts?: () => Promise<PickerItem[]>,
   ) {
     this.picker = new HistoryPicker(
       theme,
@@ -608,6 +591,7 @@ export class ManualOverlayHistoryPicker implements Component, Focusable {
       () => this.scheduleDraw(),
       keybindings,
       tui,
+      loadSessionStarts,
     );
     this.scheduleDraw();
   }
@@ -728,7 +712,7 @@ export function applyEditorText(ctx: ExtensionContext, text: string): void {
 function openOverlayPicker(
   ctx: ExtensionContext,
   history: string[],
-  sessionStarts: PickerItem[],
+  loadSessionStarts: () => Promise<PickerItem[]>,
   onSelected: (text: string) => void,
   onClosed: () => void,
 ): PickerController {
@@ -756,9 +740,10 @@ function openOverlayPicker(
           theme,
           keybindings,
           buildHistoryItems(history),
-          sessionStarts,
+          [],
           initialText,
           (selected) => closeWith(selected),
+          loadSessionStarts,
         );
         unsubscribeInput = ctx.ui.onTerminalInput((data) => {
           if (closed) return undefined;
@@ -877,7 +862,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerShortcut("ctrl+r", {
     description: "Fuzzy search folder command history",
-    handler: async (ctx) => {
+    handler: (ctx) => {
       if (history.length === 0) {
         ctx.ui.notify("No folder command history yet", "info");
         return;
@@ -894,12 +879,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const sessionStarts = await loadSessionStartItems(currentCwd);
-
+      const pickerCwd = currentCwd;
       activePicker = openOverlayPicker(
         ctx,
         history,
-        sessionStarts,
+        () => loadSessionStartItems(pickerCwd),
         () => {
           historyIndex = -1;
           savedEditorText = "";

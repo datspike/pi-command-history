@@ -22,7 +22,7 @@ pi -e /home/spike/hobby/pi-command-history
 | `ctrl+up` | Previous command (older) |
 | `ctrl+down` | Next command (newer) |
 
-When you enter a command in pi, it is saved to a per-folder history file. Next time you open pi in the same folder, press `ctrl+r` to filter previous commands and press Enter to place the selected command in the editor. Inside the picker, press `Tab` to toggle into a mode that searches only among the initial prompts of unique Pi sessions for the current folder.
+When you enter a command in pi, it is saved to a per-folder history file. Next time you open pi in the same folder, press `ctrl+r` to filter previous commands and press Enter to place the selected command in the editor. Inside the picker, press `Tab` to toggle into a mode that searches only among the initial prompts of unique Pi sessions for the current folder. Session starts are loaded lazily on the first `Tab`, so opening command history does not wait for Pi to scan session files.
 
 ### Fuzzy picker controls
 
@@ -49,6 +49,7 @@ When you enter a command in pi, it is saved to a per-folder history file. Next t
 - History files are stored in `~/.pi/folder-history/` as JSONL, keyed by the working directory.
 - A status indicator in the footer shows the number of saved commands.
 - `ctrl+r` uses a hidden Pi overlay to capture keys and draws a framed modal directly on the main terminal screen. This avoids the `pi-tui` overlay diff path that can scroll the chat while moving through rows.
+- Session-start prompts reuse metadata returned by `SessionManager.list()`; session files are not opened a second time.
 - Compatible with other editor extensions because it does not replace the editor.
 
 ## Development
