@@ -4,7 +4,7 @@
   "description": "Folder-based persistent command history for pi with ctrl+r fuzzy search.",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/datspike/pi-command-history.git"
+    "url": "git+https://github.com/datspike/pi-command-history.git"
   },
   "author": "Ross Z",
   "license": "MIT",
@@ -18,7 +18,9 @@
   "files": [
     "extensions",
     "package.json",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "NOTICE"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

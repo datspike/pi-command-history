@@ -1,0 +1,9 @@
+## Provenance
+
+This repository retains historical package metadata for the original `pi-command-history` by Ross Z:
+
+- upstream repository: `https://github.com/ross-jill-ws/pi-command-history`;
+- published package metadata declares the upstream package `pi-command-history` as MIT;
+- the local repository has no shared Git ancestry with that upstream and its tracked source files are not file-identical to the published `0.2.0` tarball.
+
+Copyright notices for Ross Z and Datspike are retained in `LICENSE`. The MIT text covers the repository as distributed here; this notice records the historical origin instead of presenting the code as an unmodified upstream copy.

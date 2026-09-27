@@ -5,13 +5,19 @@ Folder-based persistent command history for [pi](https://github.com/badlogic/pi-
 ## Install
 
 ```bash
-pi install /home/spike/hobby/pi-command-history
+pi install git:github.com/datspike/pi-command-history
 ```
 
 Or try without installing:
 
 ```bash
-pi -e /home/spike/hobby/pi-command-history
+pi -e git:github.com/datspike/pi-command-history
+```
+
+To update the unpinned Git installation later:
+
+```bash
+pi update --extensions
 ```
 
 ## Usage
@@ -63,7 +69,7 @@ npm run typecheck
 ## Uninstall
 
 ```bash
-pi remove /home/spike/hobby/pi-command-history
+pi remove git:github.com/datspike/pi-command-history
 ```
 
 To also remove saved history:
